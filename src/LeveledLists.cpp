@@ -595,7 +595,7 @@ namespace LeveledLists
 			if (a_leveledList->leveledLists)
 			{
 				const auto listCount = static_cast<std::uint8_t>(a_leveledList->baseListCount);
-				memset(a_leveledList->leveledLists, 0, listCount * sizeof(RE::LEVELED_OBJECT));
+				std::memset(a_leveledList->leveledLists, 0, sizeof(RE::LEVELED_OBJECT) * listCount);
 				FreeLeveledListEntries(a_leveledList->leveledLists);
 
 				a_leveledList->leveledLists = nullptr;
