@@ -32,13 +32,16 @@ namespace ObjectModifications
 
 		enum class ElementType
 		{
-			kProperties
+			kIncludes,
+			kProperties,
 		};
 
 		std::string_view ElementTypeToString(ElementType a_value)
 		{
 			switch (a_value)
 			{
+			case ElementType::kIncludes:
+				return "Includes";
 			case ElementType::kProperties:
 				return "Properties";
 			default:
@@ -50,6 +53,7 @@ namespace ObjectModifications
 		{
 			kClear,
 			kAdd,
+			kDelete,
 		};
 
 		std::string_view OperationTypeToString(OperationType a_value)
@@ -60,6 +64,8 @@ namespace ObjectModifications
 				return "Clear";
 			case OperationType::kAdd:
 				return "Add";
+			case OperationType::kDelete:
+				return "Delete";
 			default:
 				return std::string_view{};
 			}
@@ -69,7 +75,15 @@ namespace ObjectModifications
 		{
 			struct Operation
 			{
-				struct Data
+				struct IncludesData
+				{
+					std::string Form;
+					std::uint8_t MinLevel = 0;
+					bool Optional = false;
+					bool DontUseAll = false;
+				};
+
+				struct PropertiesData
 				{
 					std::string ValueType;
 					std::string FunctionType;
@@ -79,7 +93,7 @@ namespace ObjectModifications
 				};
 
 				OperationType OpType;
-				std::optional<Data> OpData;
+				std::optional<std::any> OpData;
 			};
 
 			FilterType Filter;
@@ -88,16 +102,26 @@ namespace ObjectModifications
 			std::vector<Operation> Operations;
 		};
 
+		using IncludeContainer = std::array<std::byte, sizeof(RE::BGSMod::Attachment::Instance)>;
 		using PropertyContainer = std::array<std::byte, sizeof(RE::BGSMod::Property::Mod)>;
 
 		struct PatchData
 		{
+			struct IncludesData
+			{
+				bool Clear = false;
+				std::vector<IncludeContainer> Add;
+				std::vector<IncludeContainer> Delete;
+			};
+
 			struct PropertiesData
 			{
 				bool Clear = false;
-				std::vector<PropertyContainer> AddProperties;
+				std::vector<PropertyContainer> Add;
+				std::vector<PropertyContainer> Delete;
 			};
 
+			std::optional<IncludesData> Includes;
 			std::optional<PropertiesData> Properties;
 		};
 
@@ -391,6 +415,7 @@ namespace ObjectModifications
 
 				switch (a_configData.Element)
 				{
+				case ElementType::kIncludes:
 				case ElementType::kProperties:
 					logger::info("{}{}({}).{}", indent, FilterTypeToString(a_configData.Filter), a_configData.FilterForm, ElementTypeToString(a_configData.Element));
 					for (std::size_t opIndex = 0; opIndex < a_configData.Operations.size(); ++opIndex)
@@ -404,29 +429,40 @@ namespace ObjectModifications
 							break;
 
 						case OperationType::kAdd:
-							if (a_configData.Operations[opIndex].OpData->ValueType == "Int")
+						case OperationType::kDelete:
+							if (a_configData.Element == ElementType::kIncludes)
 							{
-								opLog = fmt::format(".{}({}, {}, {}, {}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType), a_configData.Operations[opIndex].OpData->ValueType, a_configData.Operations[opIndex].OpData->FunctionType, a_configData.Operations[opIndex].OpData->Property, std::any_cast<std::uint32_t>(a_configData.Operations[opIndex].OpData->Value1), std::any_cast<std::uint32_t>(a_configData.Operations[opIndex].OpData->Value2));
+								const auto& op = a_configData.Operations[opIndex];
+								const auto& opData = std::any_cast<const ConfigData::Operation::IncludesData&>(op.OpData.value());
+								opLog = fmt::format(".{}({}, {}, {}, {})", OperationTypeToString(op.OpType), opData.Form, opData.MinLevel, opData.Optional, opData.DontUseAll);
 							}
-							else if (a_configData.Operations[opIndex].OpData->ValueType == "Float")
+							else if (a_configData.Element == ElementType::kProperties)
 							{
-								opLog = fmt::format(".{}({}, {}, {}, {}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType), a_configData.Operations[opIndex].OpData->ValueType, a_configData.Operations[opIndex].OpData->FunctionType, a_configData.Operations[opIndex].OpData->Property, std::any_cast<float>(a_configData.Operations[opIndex].OpData->Value1), std::any_cast<float>(a_configData.Operations[opIndex].OpData->Value2));
-							}
-							else if (a_configData.Operations[opIndex].OpData->ValueType == "Bool")
-							{
-								opLog = fmt::format(".{}({}, {}, {}, {}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType), a_configData.Operations[opIndex].OpData->ValueType, a_configData.Operations[opIndex].OpData->FunctionType, a_configData.Operations[opIndex].OpData->Property, std::any_cast<bool>(a_configData.Operations[opIndex].OpData->Value1), std::any_cast<bool>(a_configData.Operations[opIndex].OpData->Value2));
-							}
-							else if (a_configData.Operations[opIndex].OpData->ValueType == "Enum")
-							{
-								opLog = fmt::format(".{}({}, {}, {}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType), a_configData.Operations[opIndex].OpData->ValueType, a_configData.Operations[opIndex].OpData->FunctionType, a_configData.Operations[opIndex].OpData->Property, std::any_cast<std::uint32_t>(a_configData.Operations[opIndex].OpData->Value1));
-							}
-							else if (a_configData.Operations[opIndex].OpData->ValueType == "FormIDInt")
-							{
-								opLog = fmt::format(".{}({}, {}, {}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType), a_configData.Operations[opIndex].OpData->ValueType, a_configData.Operations[opIndex].OpData->FunctionType, a_configData.Operations[opIndex].OpData->Property, std::any_cast<std::string>(a_configData.Operations[opIndex].OpData->Value1));
-							}
-							else if (a_configData.Operations[opIndex].OpData->ValueType == "FormIDFloat")
-							{
-								opLog = fmt::format(".{}({}, {}, {}, {}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType), a_configData.Operations[opIndex].OpData->ValueType, a_configData.Operations[opIndex].OpData->FunctionType, a_configData.Operations[opIndex].OpData->Property, std::any_cast<std::string>(a_configData.Operations[opIndex].OpData->Value1), std::any_cast<float>(a_configData.Operations[opIndex].OpData->Value2));
+								const auto& opData = std::any_cast<const ConfigData::Operation::PropertiesData&>(a_configData.Operations[opIndex].OpData.value());
+								if (opData.ValueType == "Int")
+								{
+									opLog = fmt::format(".{}({}, {}, {}, {}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType), opData.ValueType, opData.FunctionType, opData.Property, std::any_cast<std::uint32_t>(opData.Value1), std::any_cast<std::uint32_t>(opData.Value2));
+								}
+								else if (opData.ValueType == "Float")
+								{
+									opLog = fmt::format(".{}({}, {}, {}, {}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType), opData.ValueType, opData.FunctionType, opData.Property, std::any_cast<float>(opData.Value1), std::any_cast<float>(opData.Value2));
+								}
+								else if (opData.ValueType == "Bool")
+								{
+									opLog = fmt::format(".{}({}, {}, {}, {}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType), opData.ValueType, opData.FunctionType, opData.Property, std::any_cast<bool>(opData.Value1), std::any_cast<bool>(opData.Value2));
+								}
+								else if (opData.ValueType == "Enum")
+								{
+									opLog = fmt::format(".{}({}, {}, {}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType), opData.ValueType, opData.FunctionType, opData.Property, std::any_cast<std::uint32_t>(opData.Value1));
+								}
+								else if (opData.ValueType == "FormIDInt")
+								{
+									opLog = fmt::format(".{}({}, {}, {}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType), opData.ValueType, opData.FunctionType, opData.Property, std::any_cast<std::string>(opData.Value1));
+								}
+								else if (opData.ValueType == "FormIDFloat")
+								{
+									opLog = fmt::format(".{}({}, {}, {}, {}, {})", OperationTypeToString(a_configData.Operations[opIndex].OpType), opData.ValueType, opData.FunctionType, opData.Property, std::any_cast<std::string>(opData.Value1), std::any_cast<float>(opData.Value2));
+								}
 							}
 							break;
 
@@ -486,7 +522,11 @@ namespace ObjectModifications
 			bool ParseElement(ConfigData& a_configData)
 			{
 				const auto token = reader.GetToken();
-				if (token == "Properties")
+				if (token == "Includes")
+				{
+					a_configData.Element = ElementType::kIncludes;
+				}
+				else if (token == "Properties")
 				{
 					a_configData.Element = ElementType::kProperties;
 				}
@@ -512,6 +552,10 @@ namespace ObjectModifications
 				{
 					newOp.OpType = OperationType::kAdd;
 				}
+				else if (token == "Delete")
+				{
+					newOp.OpType = OperationType::kDelete;
+				}
 				else
 				{
 					logger::warn("Line {}, Col {}: Invalid OperationName '{}'.", reader.GetLastLine(), reader.GetLastLineIndex(), token);
@@ -521,8 +565,9 @@ namespace ObjectModifications
 				auto isValidOperation = [](ElementType elem, OperationType op) -> bool {
 					switch (elem)
 					{
+					case ElementType::kIncludes:
 					case ElementType::kProperties:
-						return (op == OperationType::kClear || op == OperationType::kAdd);
+						return (op == OperationType::kClear || op == OperationType::kAdd || op == OperationType::kDelete);
 					default:
 						return false;
 					}
@@ -541,11 +586,69 @@ namespace ObjectModifications
 					return false;
 				}
 
-				if (a_configData.Element == ElementType::kProperties)
+				if (a_configData.Element == ElementType::kIncludes)
 				{
 					if (newOp.OpType != OperationType::kClear)
 					{
-						ConfigData::Operation::Data opData{};
+						ConfigData::Operation::IncludesData opData{};
+
+						const auto formOpt = ParseForm();
+						if (!formOpt.has_value())
+						{
+							return false;
+						}
+						opData.Form = formOpt.value();
+
+						token = reader.GetToken();
+						if (token != ",")
+						{
+							logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
+							return false;
+						}
+
+						const auto minLevelOpt = ParseNumber<std::uint8_t>();
+						if (!minLevelOpt.has_value())
+						{
+							return false;
+						}
+						opData.MinLevel = minLevelOpt.value();
+
+						token = reader.GetToken();
+						if (token != ",")
+						{
+							logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
+							return false;
+						}
+
+						const auto optionalOpt = ParseBool();
+						if (!optionalOpt.has_value())
+						{
+							return false;
+						}
+						opData.Optional = optionalOpt.value();
+
+						token = reader.GetToken();
+						if (token != ",")
+						{
+							logger::warn("Line {}, Col {}: Syntax error. Expected ','.", reader.GetLastLine(), reader.GetLastLineIndex());
+							return false;
+						}
+
+						const auto dontUseAllOpt = ParseBool();
+						if (!dontUseAllOpt.has_value())
+						{
+							return false;
+						}
+						opData.DontUseAll = dontUseAllOpt.value();
+
+						newOp.OpData = opData;
+					}
+				}
+				else if (a_configData.Element == ElementType::kProperties)
+				{
+					if (newOp.OpType != OperationType::kClear)
+					{
+						ConfigData::Operation::PropertiesData opData{};
 
 						const auto valueTypeOpt = ParseValueType();
 						if (!valueTypeOpt.has_value())
@@ -825,7 +928,55 @@ namespace ObjectModifications
 
 				auto& patchData = g_patchMap[oMod];
 
-				if (a_configData.Element == ElementType::kProperties)
+				if (a_configData.Element == ElementType::kIncludes)
+				{
+					if (!patchData.Includes.has_value())
+					{
+						patchData.Includes = PatchData::IncludesData{};
+					}
+
+					for (const auto& op : a_configData.Operations)
+					{
+						if (op.OpType == OperationType::kClear)
+						{
+							patchData.Includes->Clear = true;
+						}
+						else
+						{
+							const auto& opData = std::any_cast<const ConfigData::Operation::IncludesData&>(op.OpData.value());
+							auto* includeForm = Utils::GetFormFromString(opData.Form);
+							if (!includeForm)
+							{
+								logger::warn("Invalid FormID: '{}'.", opData.Form);
+								continue;
+							}
+
+							auto* includeMod = includeForm->As<RE::BGSMod::Attachment::Mod>();
+							if (!includeMod)
+							{
+								logger::warn("'{}' is not a Object Modification.", opData.Form);
+								continue;
+							}
+
+							IncludeContainer includeContainer{};
+							auto& include = reinterpret_cast<RE::BGSMod::Attachment::Instance&>(includeContainer);
+							include.mod = includeMod;
+							include.index = opData.MinLevel;
+							include.optional = opData.Optional;
+							include.childrenExclusive = opData.DontUseAll;
+
+							if (op.OpType == OperationType::kAdd)
+							{
+								patchData.Includes->Add.emplace_back(includeContainer);
+							}
+							else
+							{
+								patchData.Includes->Delete.emplace_back(includeContainer);
+							}
+						}
+					}
+				}
+				else if (a_configData.Element == ElementType::kProperties)
 				{
 					if (!patchData.Properties.has_value())
 					{
@@ -838,162 +989,176 @@ namespace ObjectModifications
 						{
 							patchData.Properties->Clear = true;
 						}
-						else if (op.OpType == OperationType::kAdd)
+						else if (op.OpType == OperationType::kAdd || op.OpType == OperationType::kDelete)
 						{
-							auto& prop = reinterpret_cast<RE::BGSMod::Property::Mod&>(patchData.Properties->AddProperties.emplace_back());
-
+							const auto& opData = std::any_cast<const ConfigData::Operation::PropertiesData&>(op.OpData.value());
 							std::uint32_t target = 0;
-							if (oMod->targetFormType.get() == RE::ENUM_FORM_ID::kWEAP)
-							{
-								const auto it = g_weaponPropertyMap.find(op.OpData->Property);
-								if (it == g_weaponPropertyMap.end())
-								{
-									logger::warn("Invalid weapon property: '{}'.", op.OpData->Property);
-									patchData.Properties->AddProperties.pop_back();
-									continue;
-								}
 
-								target = it->second;
-							}
-							else if (oMod->targetFormType.get() == RE::ENUM_FORM_ID::kARMO)
+							switch (oMod->targetFormType.get())
 							{
-								const auto it = g_armorPropertyMap.find(op.OpData->Property);
-								if (it == g_armorPropertyMap.end())
+							case RE::ENUM_FORM_ID::kARMO:
 								{
-									logger::warn("Invalid armor property: '{}'.", op.OpData->Property);
-									patchData.Properties->AddProperties.pop_back();
-									continue;
-								}
+									const auto it = g_armorPropertyMap.find(opData.Property);
+									if (it == g_armorPropertyMap.end())
+									{
+										logger::warn("Invalid armor property: '{}'.", opData.Property);
+										continue;
+									}
 
-								target = it->second;
-							}
-							else if (oMod->targetFormType.get() == RE::ENUM_FORM_ID::kNPC_)
-							{
-								const auto it = g_actorPropertyMap.find(op.OpData->Property);
-								if (it == g_actorPropertyMap.end())
+									target = it->second;
+								}
+								break;
+
+							case RE::ENUM_FORM_ID::kWEAP:
 								{
-									logger::warn("Invalid actor property: '{}'.", op.OpData->Property);
-									patchData.Properties->AddProperties.pop_back();
-									continue;
-								}
+									const auto it = g_weaponPropertyMap.find(opData.Property);
+									if (it == g_weaponPropertyMap.end())
+									{
+										logger::warn("Invalid weapon property: '{}'.", opData.Property);
+										continue;
+									}
 
-								target = it->second;
-							}
-							else
-							{
-								logger::warn("Unknown target form type: '{}'.", static_cast<int>(oMod->targetFormType.get()));
-								patchData.Properties->AddProperties.pop_back();
+									target = it->second;
+								}
+								break;
+
+							case RE::ENUM_FORM_ID::kNPC_:
+								{
+									const auto it = g_actorPropertyMap.find(opData.Property);
+									if (it == g_actorPropertyMap.end())
+									{
+										logger::warn("Invalid actor property: '{}'.", opData.Property);
+										continue;
+									}
+
+									target = it->second;
+								}
+								break;
+
+							default:
+								logger::warn("Cannot resolve property '{}' for unsupported Form Type: '{}'.", opData.Property, a_configData.FilterForm);
 								continue;
 							}
 
-							prop.target = target;
+							PropertyContainer propertyContainer{};
+							auto& property = reinterpret_cast<RE::BGSMod::Property::Mod&>(propertyContainer);
 
-							if (op.OpData->ValueType == "Int" || op.OpData->ValueType == "Float")
+							property.target = target;
+
+							if (opData.ValueType == "Int" || opData.ValueType == "Float")
 							{
-								if (op.OpData->ValueType == "Int")
+								if (opData.ValueType == "Int")
 								{
-									prop.type = RE::BGSMod::Property::TYPE::kInt;
+									property.type = RE::BGSMod::Property::TYPE::kInt;
 								}
 								else
 								{
-									prop.type = RE::BGSMod::Property::TYPE::kFloat;
+									property.type = RE::BGSMod::Property::TYPE::kFloat;
 								}
 
-								if (op.OpData->FunctionType == "SET")
+								if (opData.FunctionType == "SET")
 								{
-									prop.op = RE::BGSMod::Property::OP::kSet;
+									property.op = RE::BGSMod::Property::OP::kSet;
 								}
-								else if (op.OpData->FunctionType == "ADD")
+								else if (opData.FunctionType == "ADD")
 								{
-									prop.op = RE::BGSMod::Property::OP::kAdd;
+									property.op = RE::BGSMod::Property::OP::kAdd;
 								}
 								else
-								{  // op.OpData->FunctionType == "MULADD"
-									prop.op = RE::BGSMod::Property::OP::kMul;
+								{  // opData.FunctionType == "MULADD"
+									property.op = RE::BGSMod::Property::OP::kMul;
 								}
 
-								if (op.OpData->ValueType == "Int")
+								if (opData.ValueType == "Int")
 								{
-									prop.data.mm.min.i = static_cast<std::int32_t>(std::any_cast<std::uint32_t>(op.OpData->Value1));
-									prop.data.mm.max.i = static_cast<std::int32_t>(std::any_cast<std::uint32_t>(op.OpData->Value2));
+									property.data.mm.min.i = static_cast<std::int32_t>(std::any_cast<std::uint32_t>(opData.Value1));
+									property.data.mm.max.i = static_cast<std::int32_t>(std::any_cast<std::uint32_t>(opData.Value2));
 								}
 								else
 								{
-									prop.data.mm.min.f = std::any_cast<float>(op.OpData->Value1);
-									prop.data.mm.max.f = std::any_cast<float>(op.OpData->Value2);
+									property.data.mm.min.f = std::any_cast<float>(opData.Value1);
+									property.data.mm.max.f = std::any_cast<float>(opData.Value2);
 								}
 							}
-							else if (op.OpData->ValueType == "Bool")
+							else if (opData.ValueType == "Bool")
 							{
-								prop.type = RE::BGSMod::Property::TYPE::kBool;
+								property.type = RE::BGSMod::Property::TYPE::kBool;
 
-								if (op.OpData->FunctionType == "SET")
+								if (opData.FunctionType == "SET")
 								{
-									prop.op = RE::BGSMod::Property::OP::kSet;
+									property.op = RE::BGSMod::Property::OP::kSet;
 								}
-								else if (op.OpData->FunctionType == "AND")
+								else if (opData.FunctionType == "AND")
 								{
-									prop.op = RE::BGSMod::Property::OP::kAnd;
+									property.op = RE::BGSMod::Property::OP::kAnd;
 								}
 								else
-								{  // op.OpData->FunctionType == "OR"
-									prop.op = RE::BGSMod::Property::OP::kOr;
+								{  // opData.FunctionType == "OR"
+									property.op = RE::BGSMod::Property::OP::kOr;
 								}
 
-								prop.data.mm.min.i = static_cast<std::int32_t>(std::any_cast<bool>(op.OpData->Value1));
-								prop.data.mm.max.i = static_cast<std::int32_t>(std::any_cast<bool>(op.OpData->Value2));
+								property.data.mm.min.i = static_cast<std::int32_t>(std::any_cast<bool>(opData.Value1));
+								property.data.mm.max.i = static_cast<std::int32_t>(std::any_cast<bool>(opData.Value2));
 							}
-							else if (op.OpData->ValueType == "Enum")
+							else if (opData.ValueType == "Enum")
 							{
-								prop.type = RE::BGSMod::Property::TYPE::kEnum;
+								property.type = RE::BGSMod::Property::TYPE::kEnum;
 
-								prop.op = RE::BGSMod::Property::OP::kSet;
+								property.op = RE::BGSMod::Property::OP::kSet;
 
-								prop.data.mm.min.i = static_cast<std::int32_t>(std::any_cast<std::uint32_t>(op.OpData->Value1));
+								property.data.mm.min.i = static_cast<std::int32_t>(std::any_cast<std::uint32_t>(opData.Value1));
 							}
-							else if (op.OpData->ValueType == "FormIDInt" || op.OpData->ValueType == "FormIDFloat")
+							else if (opData.ValueType == "FormIDInt" || opData.ValueType == "FormIDFloat")
 							{
-								const auto formSV = std::any_cast<std::string>(op.OpData->Value1);
+								const auto formSV = std::any_cast<std::string>(opData.Value1);
 
 								auto* targetForm = Utils::GetFormFromString(formSV);
 								if (!targetForm)
 								{
 									logger::warn("Invalid FormID: '{}'.", formSV);
-									patchData.Properties->AddProperties.pop_back();
 									continue;
 								}
 
-								if (op.OpData->ValueType == "FormIDInt")
+								if (opData.ValueType == "FormIDInt")
 								{
-									prop.type = RE::BGSMod::Property::TYPE::kForm;
+									property.type = RE::BGSMod::Property::TYPE::kForm;
 								}
 								else
 								{
-									prop.type = RE::BGSMod::Property::TYPE::kPair;
+									property.type = RE::BGSMod::Property::TYPE::kPair;
 								}
 
-								if (op.OpData->FunctionType == "SET")
+								if (opData.FunctionType == "SET")
 								{
-									prop.op = RE::BGSMod::Property::OP::kSet;
+									property.op = RE::BGSMod::Property::OP::kSet;
 								}
-								else if (op.OpData->FunctionType == "REM")
+								else if (opData.FunctionType == "REM")
 								{
-									prop.op = RE::BGSMod::Property::OP::kRem;
+									property.op = RE::BGSMod::Property::OP::kRem;
 								}
 								else
 								{
-									prop.op = RE::BGSMod::Property::OP::kAdd;
+									property.op = RE::BGSMod::Property::OP::kAdd;
 								}
 
-								if (op.OpData->ValueType == "FormIDInt")
+								if (opData.ValueType == "FormIDInt")
 								{
-									prop.data.form = targetForm;
+									property.data.form = targetForm;
 								}
 								else
 								{
-									prop.data.fv.formID = targetForm->formID;
-									prop.data.fv.value = std::any_cast<float>(op.OpData->Value2);
+									property.data.fv.formID = targetForm->formID;
+									property.data.fv.value = std::any_cast<float>(opData.Value2);
 								}
+							}
+
+							if (op.OpType == OperationType::kAdd)
+							{
+								patchData.Properties->Add.emplace_back(propertyContainer);
+							}
+							else
+							{
+								patchData.Properties->Delete.emplace_back(propertyContainer);
 							}
 						}
 					}
@@ -1001,87 +1166,226 @@ namespace ObjectModifications
 			}
 		}
 
-		void GetProperties(RE::BGSMod::Attachment::Mod* a_oMod, std::vector<PropertyContainer>& a_properties)
+		std::vector<IncludeContainer> GetIncludes(RE::BGSMod::Attachment::Mod* a_oMod)
 		{
-			const auto oModCount = static_cast<std::uint32_t>(a_oMod->size / sizeof(RE::BGSMod::Property::Mod));
-			if (!a_oMod->buffer || oModCount == 0)
+			const auto includeBuffer = a_oMod->GetBuffer<RE::BGSMod::Attachment::Instance>(0);
+			if (includeBuffer.empty())
 			{
-				return;
+				return {};
 			}
 
-			a_properties.resize(oModCount);
+			std::vector<IncludeContainer> includes(includeBuffer.size());
+			std::memcpy(includes.data(), includeBuffer.data(), includeBuffer.size_bytes());
 
-			std::memcpy(a_properties.data(), a_oMod->buffer, oModCount * sizeof(RE::BGSMod::Property::Mod));
+			return includes;
 		}
 
-		void PatchProperties(RE::BGSMod::Attachment::Mod* a_oMod, const std::vector<PropertyContainer>& a_properties)
+		std::vector<PropertyContainer> GetProperties(RE::BGSMod::Attachment::Mod* a_oMod)
 		{
-			if (a_properties.empty())
+			const auto propertyBuffer = a_oMod->GetBuffer<RE::BGSMod::Property::Mod>(1);
+			if (propertyBuffer.empty())
 			{
-				if (a_oMod->buffer)
-				{
-					RE::free(a_oMod->buffer);
-				}
-				a_oMod->buffer = nullptr;
-				a_oMod->size = 0;
+				return {};
+			}
+
+			std::vector<PropertyContainer> properties(propertyBuffer.size());
+			std::memcpy(properties.data(), propertyBuffer.data(), propertyBuffer.size_bytes());
+
+			return properties;
+		}
+
+		void FreeBuffer(RE::BGSMod::Attachment::Mod* a_oMod, bool a_cleared)
+		{
+			if (!a_oMod->buffer)
+			{
 				return;
 			}
 
-			const auto allocateSize = sizeof(RE::BGSMod::Property::Mod) * a_properties.size();
+			// Retained strings move with the copied bytes. Only Clear releases them.
+			if (a_cleared)
+			{
+				for (auto& property : a_oMod->GetBuffer<RE::BGSMod::Property::Mod>(1))
+				{
+					if (property.type == RE::BGSMod::Property::TYPE::kString)
+					{
+						property.data.str = nullptr;
+					}
+				}
+			}
 
-			auto* ptr = RE::malloc(allocateSize + sizeof(std::size_t));
+			RE::free(a_oMod->buffer);
+			a_oMod->buffer = nullptr;
+			a_oMod->size = 0;
+		}
+
+		void PatchBuffer(RE::BGSMod::Attachment::Mod* a_oMod, const std::vector<IncludeContainer>& a_includes, const std::vector<PropertyContainer>& a_properties, bool a_propertiesCleared)
+		{
+			const auto includesSize = sizeof(RE::BGSMod::Attachment::Instance) * a_includes.size();
+			const auto propertiesSize = sizeof(RE::BGSMod::Property::Mod) * a_properties.size();
+
+			const auto bufferSize = includesSize + propertiesSize;
+			if (bufferSize == 0)
+			{
+				FreeBuffer(a_oMod, a_propertiesCleared);
+				return;
+			}
+
+			std::array<RE::BSTDataBuffer<2>::Block, 2> blocks{};
+			blocks[0].id = 0;
+			blocks[0].size = static_cast<std::uint32_t>(includesSize);
+			blocks[1].id = 1;
+			blocks[1].size = static_cast<std::uint32_t>(propertiesSize);
+
+			auto* ptr = static_cast<std::byte*>(RE::malloc(bufferSize + sizeof(blocks)));
 			if (!ptr)
 			{
-				logger::critical("Failed to allocate the new Properties.");
+				logger::critical("Failed to allocate the new Object Modification buffer.");
 				return;
 			}
 
-			std::memcpy(ptr, a_properties.data(), allocateSize);
-
-			const auto postData = (0x01000000 | allocateSize) << 32;
-			std::memcpy(static_cast<std::byte*>(ptr) + allocateSize, &postData, sizeof(postData));
-
-			auto* oldBuffer = a_oMod->buffer;
-			a_oMod->buffer = static_cast<std::byte*>(ptr);
-			a_oMod->size = static_cast<std::uint32_t>(allocateSize);
-
-			if (oldBuffer)
+			// Includes, Properties, then the two control blocks.
+			if (!a_includes.empty())
 			{
-				RE::free(oldBuffer);
+				std::memcpy(ptr, a_includes.data(), includesSize);
 			}
+			if (!a_properties.empty())
+			{
+				std::memcpy(ptr + includesSize, a_properties.data(), propertiesSize);
+			}
+			std::memcpy(ptr + bufferSize, blocks.data(), sizeof(blocks));
+
+			FreeBuffer(a_oMod, a_propertiesCleared);
+
+			a_oMod->buffer = ptr;
+			a_oMod->size = static_cast<std::uint32_t>(bufferSize);
 		}
 
-		void PatchProperties(RE::BGSMod::Attachment::Mod* a_oMod, const PatchData::PropertiesData& a_propertiesData)
+		bool PatchIncludes(std::vector<IncludeContainer>& a_includes, const PatchData::IncludesData& a_includesData)
 		{
-			bool cleared = false, added = false;
-			std::vector<PropertyContainer> properties;
+			bool modified = false;
+
+			// Clear
+			if (a_includesData.Clear)
+			{
+				a_includes.clear();
+				modified = true;
+			}
+			else
+			{
+				// Delete
+				for (const auto& targetIncludeContainer : a_includesData.Delete)
+				{
+					const auto& targetInclude = reinterpret_cast<const RE::BGSMod::Attachment::Instance&>(targetIncludeContainer);
+
+					for (auto it = a_includes.begin(); it != a_includes.end(); ++it)
+					{
+						const auto& include = reinterpret_cast<const RE::BGSMod::Attachment::Instance&>(*it);
+						if (include.mod != targetInclude.mod || include.index != targetInclude.index || include.optional != targetInclude.optional || include.childrenExclusive != targetInclude.childrenExclusive)
+						{
+							continue;
+						}
+
+						a_includes.erase(it);
+						modified = true;
+						break;
+					}
+				}
+			}
+
+			// Add
+			for (const auto& targetIncludeContainer : a_includesData.Add)
+			{
+				a_includes.emplace_back(targetIncludeContainer);
+				modified = true;
+			}
+
+			return modified;
+		}
+
+		bool PatchProperties(std::vector<PropertyContainer>& a_properties, const PatchData::PropertiesData& a_propertiesData)
+		{
+			bool cleared = false, modified = false;
 
 			// Clear
 			if (a_propertiesData.Clear)
 			{
+				a_properties.clear();
 				cleared = true;
 			}
-			else
+
+			// Delete
+			if (!cleared)
 			{
-				GetProperties(a_oMod, properties);
+				for (const auto& targetPropertyContainer : a_propertiesData.Delete)
+				{
+					const auto& targetProperty = reinterpret_cast<const RE::BGSMod::Property::Mod&>(targetPropertyContainer);
+
+					for (auto it = a_properties.begin(); it != a_properties.end(); ++it)
+					{
+						const auto& property = reinterpret_cast<const RE::BGSMod::Property::Mod&>(*it);
+
+						if (property.target != targetProperty.target || property.op != targetProperty.op || property.type != targetProperty.type)
+						{
+							continue;
+						}
+
+						switch (property.type)
+						{
+						case RE::BGSMod::Property::TYPE::kInt:
+						case RE::BGSMod::Property::TYPE::kBool:
+							if (property.data.mm.min.i != targetProperty.data.mm.min.i || property.data.mm.max.i != targetProperty.data.mm.max.i)
+							{
+								continue;
+							}
+							break;
+
+						case RE::BGSMod::Property::TYPE::kFloat:
+							if (property.data.mm.min.f != targetProperty.data.mm.min.f || property.data.mm.max.f != targetProperty.data.mm.max.f)
+							{
+								continue;
+							}
+							break;
+
+						case RE::BGSMod::Property::TYPE::kForm:
+							if (property.data.form != targetProperty.data.form)
+							{
+								continue;
+							}
+							break;
+
+						case RE::BGSMod::Property::TYPE::kEnum:
+							if (property.data.mm.min.i != targetProperty.data.mm.min.i)
+							{
+								continue;
+							}
+							break;
+
+						case RE::BGSMod::Property::TYPE::kPair:
+							if (property.data.fv.formID != targetProperty.data.fv.formID || property.data.fv.value != targetProperty.data.fv.value)
+							{
+								continue;
+							}
+							break;
+
+						default:
+							continue;
+						}
+
+						a_properties.erase(it);
+						modified = true;
+						break;
+					}
+				}
 			}
 
 			// Add
-			const auto& addProps = a_propertiesData.AddProperties;
-			if (!addProps.empty())
+			for (const auto& targetPropertyContainer : a_propertiesData.Add)
 			{
-				const auto originalSize = properties.size();
-				const auto addCount = addProps.size();
-				properties.resize(originalSize + addCount);
-
-				std::memcpy(properties.data() + originalSize, addProps.data(), addCount * sizeof(RE::BGSMod::Property::Mod));
-				added = true;
+				a_properties.emplace_back(targetPropertyContainer);
+				modified = true;
 			}
 
-			if (cleared || added)
-			{
-				PatchProperties(a_oMod, properties);
-			}
+			return cleared || modified;
 		}
 	}  // namespace
 
@@ -1103,9 +1407,26 @@ namespace ObjectModifications
 
 		for (const auto& [omod, patchData] : g_patchMap)
 		{
+			auto includes = GetIncludes(omod);
+			auto properties = GetProperties(omod);
+
+			bool bufferModified = false, propertiesCleared = false;
+
+			if (patchData.Includes.has_value())
+			{
+				bufferModified = PatchIncludes(includes, patchData.Includes.value());
+			}
+
 			if (patchData.Properties.has_value())
 			{
-				PatchProperties(omod, patchData.Properties.value());
+				const auto propertiesModified = PatchProperties(properties, patchData.Properties.value());
+				bufferModified = bufferModified || propertiesModified;
+				propertiesCleared = patchData.Properties->Clear;
+			}
+
+			if (bufferModified)
+			{
+				PatchBuffer(omod, includes, properties, propertiesCleared);
 			}
 		}
 
