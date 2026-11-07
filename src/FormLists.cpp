@@ -97,6 +97,7 @@ namespace FormLists
 			std::optional<ListData> List;
 		};
 
+		bool g_prepared = false;
 		std::vector<Parsers::Statement<ConfigData>> g_configVec;
 		std::unordered_map<RE::BGSListForm*, PatchData> g_patchMap;
 
@@ -364,6 +365,22 @@ namespace FormLists
 			}
 		}
 
+		void PrepareOnce()
+		{
+			if (g_prepared)
+			{
+				return;
+			}
+
+			logger::info("======================== Start preparing patch for {} ========================", kTypeName);
+
+			ConfigUtils::Prepare(g_configVec, Prepare);
+			g_prepared = true;
+
+			logger::info("======================== Finished preparing patch for {} ========================", kTypeName);
+			logger::info("");
+		}
+
 		void PatchList(RE::BGSListForm* a_formList, const PatchData::ListData& a_listData)
 		{
 			bool cleared = false;
@@ -409,6 +426,35 @@ namespace FormLists
 				}
 			}
 		}
+
+		template <std::uint64_t id, std::ptrdiff_t diff>
+		class BGSListForm_ClearDataHook
+		{
+		public:
+			static void Install()
+			{
+				REL::Relocation<std::uintptr_t> target(REL::ID(id), diff);
+				func = *(func_t*)(target.get());
+				REL::safe_write(target.get(), (std::uintptr_t)ProcessHook);
+			}
+
+		private:
+			using func_t = void (*)(RE::BGSListForm&);
+
+			static void ProcessHook(RE::BGSListForm& a_formList)
+			{
+				PrepareOnce();
+				func(a_formList);
+
+				const auto it = g_patchMap.find(&a_formList);
+				if (it != g_patchMap.end() && it->second.List.has_value())
+				{
+					PatchList(it->first, it->second.List.value());
+				}
+			}
+
+			inline static func_t func;
+		};
 	}  // namespace
 
 	void ReadConfigs()
@@ -416,29 +462,8 @@ namespace FormLists
 		g_configVec = ConfigUtils::ReadConfigs<FormListParser, Parsers::Statement<ConfigData>>(kTypeName);
 	}
 
-	void Patch()
+	void Install()
 	{
-		logger::info("======================== Start preparing patch for {} ========================", kTypeName);
-
-		ConfigUtils::Prepare(g_configVec, Prepare);
-
-		logger::info("======================== Finished preparing patch for {} ========================", kTypeName);
-		logger::info("");
-
-		logger::info("======================== Start patching for {} ========================", kTypeName);
-
-		for (const auto& [formList, patchData] : g_patchMap)
-		{
-			if (patchData.List.has_value())
-			{
-				PatchList(formList, patchData.List.value());
-			}
-		}
-
-		logger::info("======================== Finished patching for {} ========================", kTypeName);
-		logger::info("");
-
-		g_configVec.clear();
-		g_patchMap.clear();
+		BGSListForm_ClearDataHook<805434, 0xB0>::Install();
 	}
 }  // namespace FormLists

@@ -3,5 +3,5 @@
 namespace FormLists
 {
 	void ReadConfigs();
-	void Patch();
+	void Install();
 }  // namespace FormLists

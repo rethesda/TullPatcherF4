@@ -33,7 +33,6 @@ namespace
 		Containers::Patch();
 		CObjs::Patch();
 		DefaultObjectManagers::Patch();
-		FormLists::Patch();
 		ImageSpaceAdapters::Patch();
 		Ingestibles::Patch();
 		Keywords::Patch();
@@ -145,6 +144,7 @@ namespace
 
 		logger::info("ReadConfig execution time: {} seconds", readConfigDuration.count());
 
+		FormLists::Install();
 		NPCs::Install();
 
 		const F4SE::MessagingInterface* message = F4SE::GetMessagingInterface();
