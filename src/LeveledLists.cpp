@@ -551,10 +551,11 @@ namespace LeveledLists
 				return {};
 			}
 
+			const auto entryCount = static_cast<std::uint8_t>(a_leveledList->baseListCount);
 			std::vector<RE::LEVELED_OBJECT> entries;
-			entries.reserve(a_leveledList->baseListCount);
+			entries.reserve(entryCount);
 
-			for (std::uint8_t entryIndex = 0; entryIndex < static_cast<std::uint8_t>(a_leveledList->baseListCount); ++entryIndex)
+			for (std::size_t entryIndex = 0; entryIndex < entryCount; ++entryIndex)
 			{
 				entries.emplace_back(a_leveledList->leveledLists[entryIndex]);
 			}
@@ -670,7 +671,7 @@ namespace LeveledLists
 					{
 						if (delForm == it->form)
 						{
-							leveledListVec.erase(it);
+							it = leveledListVec.erase(it);
 							modified = true;
 							continue;
 						}
